@@ -211,7 +211,10 @@ const App = (() => {
   }
 
   function deriveDocName(data) {
-    if (data.borrowers && data.borrowers.length) return data.borrowers[0];
+    if (data.borrowers && data.borrowers.length) {
+      const first = data.borrowers[0];
+      return typeof first === 'string' ? first : (first.name || 'Naamloos');
+    }
     if (data.borrowerName) return data.borrowerName;
     return 'Naamloos';
   }
