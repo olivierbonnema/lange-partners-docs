@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lange &amp; Partners — Document Generator</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Sidebar ── -->
+  <nav id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">L&amp;P</div>
+      <div class="logo-text">
+        <div class="logo-name">LANGE &amp; PARTNERS</div>
+        <div class="logo-sub">Financieel Advies</div>
+      </div>
+    </div>
+    <div class="sidebar-nav">
+      <a href="#" class="nav-link active" data-view="home">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Documenten
+      </a>
+      <a href="#" class="nav-link" data-view="settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+        Instellingen
+      </a>
+    </div>
+  </nav>
+
+  <!-- ── Main content ── -->
+  <main id="main-content">
+
+    <!-- VIEW: Home / Document Library -->
+    <div id="view-home" class="view">
+      <div class="view-header">
+        <div>
+          <h1>Documenten</h1>
+          <p class="view-sub">Overzicht van alle gegenereerde documenten</p>
+        </div>
+        <button class="btn btn-primary" onclick="App.showNewDocument()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nieuw document
+        </button>
+      </div>
+
+      <div class="filter-bar">
+        <button class="filter-btn active" data-filter="all">Alle</button>
+        <button class="filter-btn" data-filter="pitch">Pitch</button>
+        <button class="filter-btn" data-filter="termsheet">Termsheet</button>
+      </div>
+
+      <div id="document-list"></div>
+
+      <div id="empty-state" class="empty-state" style="display:none">
+        <div class="empty-icon">📄</div>
+        <h3>Geen documenten</h3>
+        <p>Maak uw eerste document aan door op "Nieuw document" te klikken.</p>
+        <button class="btn btn-primary" onclick="App.showNewDocument()">Nieuw document aanmaken</button>
+      </div>
+    </div>
+
+    <!-- VIEW: New / Edit Document Wizard -->
+    <div id="view-document" class="view" style="display:none">
+
+      <div class="wizard-topbar">
+        <button class="btn btn-ghost" onclick="App.navigate('home')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          Terug
+        </button>
+        <div class="step-indicators">
+          <span class="step-ind active" id="si-1">1. Type</span>
+          <span class="step-sep">›</span>
+          <span class="step-ind" id="si-2">2. Gegevens</span>
+          <span class="step-sep">›</span>
+          <span class="step-ind" id="si-3">3. Download</span>
+        </div>
+        <span id="wizard-doc-title" class="wizard-title-label"></span>
+      </div>
+
+      <!-- Step 1: Choose type -->
+      <div id="ws-1" class="wizard-step">
+        <div class="step-header">
+          <h2>Kies documenttype</h2>
+          <p>Selecteer het type document dat u wilt aanmaken.</p>
+        </div>
+        <div class="type-grid">
+          <button class="type-card" onclick="App.selectType('pitch')">
+            <div class="type-icon">📋</div>
+            <div class="type-name">Pitch</div>
+            <div class="type-desc">Toelichting Lange Financieel Advies</div>
+            <div class="type-detail">Narratief document voor investeerders: leendoel, financieringsopzet, zekerheden en uitgangspunten.</div>
+          </button>
+          <button class="type-card" onclick="App.selectType('termsheet')">
+            <div class="type-icon">📜</div>
+            <div class="type-name">Termsheet</div>
+            <div class="type-desc">Condities voor een termijnlening</div>
+            <div class="type-detail">Formele voorwaardenbrief met alle leningscondities, zekerheden en handtekeningblok.</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2: Fill form -->
+      <div id="ws-2" class="wizard-step" style="display:none">
+        <div id="form-container"></div>
+        <div class="wizard-nav">
+          <button class="btn btn-ghost" onclick="App.wizardBack()">← Terug</button>
+          <div class="flex-gap">
+            <button class="btn btn-secondary" onclick="App.saveCurrentDoc()">💾 Opslaan</button>
+            <button class="btn btn-primary" onclick="App.generateAndDownload()">Genereren &amp; downloaden ↓</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Done -->
+      <div id="ws-3" class="wizard-step" style="display:none">
+        <div class="done-container">
+          <div class="done-icon">✅</div>
+          <h2>Document gereed</h2>
+          <p>Het document is aangemaakt en wordt gedownload.</p>
+          <div class="flex-gap" style="justify-content:center;margin-top:1.5rem">
+            <button class="btn btn-primary" onclick="App.downloadAgain()">📥 Opnieuw downloaden</button>
+            <button class="btn btn-secondary" onclick="App.navigate('home')">Terug naar overzicht</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- VIEW: Settings -->
+    <div id="view-settings" class="view" style="display:none">
+      <div class="view-header">
+        <div>
+          <h1>Instellingen</h1>
+          <p class="view-sub">Standaard gegevens voor nieuwe documenten</p>
+        </div>
+        <button class="btn btn-primary" onclick="App.saveSettings()">Opslaan</button>
+      </div>
+
+      <div class="settings-sections">
+
+        <div class="settings-card">
+          <h3>Bedrijfslogo</h3>
+          <div class="logo-upload-zone" id="logo-zone" onclick="document.getElementById('logo-input').click()">
+            <div id="logo-preview-area">
+              <div class="upload-placeholder">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                <p>Klik om logo te uploaden</p>
+                <p class="hint">PNG of JPG, aanbevolen 300×80 px</p>
+              </div>
+            </div>
+            <input type="file" id="logo-input" accept="image/*" style="display:none" onchange="App.handleLogoUpload(event)">
+          </div>
+          <div style="margin-top:.5rem;display:flex;gap:.5rem">
+            <button class="btn btn-ghost" onclick="document.getElementById('logo-input').click()">Logo uploaden</button>
+            <button class="btn btn-ghost danger" id="btn-del-logo" style="display:none" onclick="App.removeLogo()">Verwijderen</button>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Adviseur gegevens</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Naam adviseur</label>
+              <input type="text" id="s-advisor-name" placeholder="Bijv. J. de Lange">
+            </div>
+            <div class="form-group">
+              <label>Telefoon</label>
+              <input type="tel" id="s-advisor-phone" placeholder="+31 6 12345678">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>E-mailadres</label>
+            <input type="email" id="s-advisor-email" placeholder="info@langepartners.nl">
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Bedrijfsgegevens</h3>
+          <div class="form-group">
+            <label>Bedrijfsnaam (geldverstrekker)</label>
+            <input type="text" id="s-company" value="Lange &amp; Partners Financieel Advies">
+          </div>
+          <div class="form-group">
+            <label>Standaard notaris</label>
+            <input type="text" id="s-notaris" placeholder="Bijv. Mr. A. Jansen">
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Confirm modal -->
+<div id="modal-overlay" class="modal-overlay" style="display:none" onclick="App.closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3 id="modal-title">Bevestiging</h3>
+    <p id="modal-msg"></p>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="App.closeModal()">Annuleren</button>
+      <button class="btn btn-danger" id="modal-ok">Verwijderen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast notification -->
+<div id="toast" class="toast" style="display:none"></div>
+
+<!-- docx library (browser build) -->
+<script src="https://unpkg.com/docx@8.2.4/build/index.umd.js"></script>
+<!-- App scripts -->
+<script src="pitch-form.js"></script>
+<script src="termsheet-form.js"></script>
+<script src="pitch-generator.js"></script>
+<script src="termsheet-generator.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
