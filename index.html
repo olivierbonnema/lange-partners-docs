@@ -7,6 +7,52 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+
+<!-- ── Password Wall ── -->
+<div id="password-wall" style="display:none;position:fixed;inset:0;z-index:9999;background:#f5f4f7;display:flex;align-items:center;justify-content:center">
+  <div style="text-align:center;max-width:340px;padding:2rem">
+    <div style="font-size:1.5rem;font-weight:700;color:#2E2060;margin-bottom:.25rem">LANGE &amp; PARTNERS</div>
+    <div style="color:#888;font-size:.85rem;margin-bottom:2rem">Financieel Advies</div>
+    <div style="margin-bottom:1rem">
+      <input type="password" id="pw-input" placeholder="Wachtwoord" style="width:100%;padding:.65rem 1rem;border:1px solid #d0cfe0;border-radius:8px;font-size:.95rem;outline:none;text-align:center" onkeydown="if(event.key==='Enter')document.getElementById('pw-btn').click()">
+    </div>
+    <div id="pw-error" style="color:#c0392b;font-size:.8rem;margin-bottom:.75rem;display:none">Onjuist wachtwoord</div>
+    <button id="pw-btn" onclick="checkPassword()" style="width:100%;padding:.65rem;background:#2E2060;color:#fff;border:none;border-radius:8px;font-size:.95rem;cursor:pointer;font-weight:600">Inloggen</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var hash = '5a0b3f9c2d8e7a1b';
+  function simpleHash(s){var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return(h>>>0).toString(16);}
+  var correctHash = simpleHash('L&P26-Re34');
+  window.checkPassword = function(){
+    var input = document.getElementById('pw-input').value;
+    if(simpleHash(input) === correctHash){
+      sessionStorage.setItem('lp_auth','1');
+      document.getElementById('password-wall').style.display='none';
+      document.getElementById('app').style.display='';
+    } else {
+      document.getElementById('pw-error').style.display='block';
+      document.getElementById('pw-input').value='';
+      document.getElementById('pw-input').focus();
+    }
+  };
+  if(sessionStorage.getItem('lp_auth')==='1'){
+    document.addEventListener('DOMContentLoaded',function(){
+      document.getElementById('password-wall').style.display='none';
+      document.getElementById('app').style.display='';
+    });
+  } else {
+    document.addEventListener('DOMContentLoaded',function(){
+      document.getElementById('password-wall').style.display='flex';
+      document.getElementById('app').style.display='none';
+      document.getElementById('pw-input').focus();
+    });
+  }
+})();
+</script>
+
 <div id="app">
 
   <!-- ── Sidebar ── -->
