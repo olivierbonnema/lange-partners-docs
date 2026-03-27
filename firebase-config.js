@@ -5,12 +5,12 @@
 // ───────────────────────────────────────────────────────────────
 
 const firebaseConfig = {
-  apiKey:            "VERVANG_MET_API_KEY",
-  authDomain:        "VERVANG_MET_PROJECT_ID.firebaseapp.com",
-  projectId:         "VERVANG_MET_PROJECT_ID",
-  storageBucket:     "VERVANG_MET_PROJECT_ID.appspot.com",
-  messagingSenderId: "VERVANG_MET_SENDER_ID",
-  appId:             "VERVANG_MET_APP_ID"
+  apiKey:            "AIzaSyAADcnx4SOi9prYB0JtyweAkR8OtIOcLw8",
+  authDomain:        "lange-partners.firebaseapp.com",
+  projectId:         "lange-partners",
+  storageBucket:     "lange-partners.firebasestorage.app",
+  messagingSenderId: "485613062573",
+  appId:             "1:485613062573:web:c21545e8d3c02aedcff924"
 };
 
 firebase.initializeApp(firebaseConfig);
