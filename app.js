@@ -340,9 +340,8 @@ const App = (() => {
       zone.innerHTML = `<img src="${s.logoDataUrl}" alt="Logo">`;
       delBtn.style.display = '';
     } else {
-      zone.innerHTML = `<div class="upload-placeholder">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-        <p>Klik om logo te uploaden</p><p class="hint">PNG of JPG, aanbevolen 300×80 px</p></div>`;
+      zone.innerHTML = `<img src="${DEFAULT_LOGO_DATA_URL}" alt="Lange & Partners logo" style="max-height:60px;max-width:280px;object-fit:contain;">
+        <p class="hint" style="margin-top:0.5rem;">Standaard logo — klik om eigen logo te uploaden</p>`;
       delBtn.style.display = 'none';
     }
   }

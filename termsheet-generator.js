@@ -198,7 +198,7 @@ const TermsheetGenerator = (() => {
     const loanTotalTxt = totalLoan > 0 ? fmtEuro(totalLoan) : '—';
 
     // ── Logo helpers ──────────────────────────────────────
-    const logoDataUrl = s.logoDataUrl || '';
+    const logoDataUrl = s.logoDataUrl || DEFAULT_LOGO_DATA_URL;
     function logoType(url) {
       const m = url.match(/data:image\/(png|jpeg|jpg|gif|webp);base64,/i);
       const t = m ? m[1].toLowerCase() : 'png';
