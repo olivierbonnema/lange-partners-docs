@@ -16,6 +16,9 @@ const TermsheetForm = (() => {
   const DEFAULT_BETALINGSWIJZE =
     'De rente en eventuele aflossingen zijn per maand achteraf verschuldigd en worden automatisch geïncasseerd van de door de Kredietnemer opgegeven bankrekening.';
 
+  const DEFAULT_BETALINGSWIJZE_PRIVE =
+    'De rente en kosten zijn maandelijks achteraf verschuldigd en dienen door Kredietnemer te worden voldaan op een door Kredietgever aan te wijzen bankrekening.';
+
   const DEFAULT_VERZEKERING =
     'De Kredietnemer zorgt voor de gebruikelijke en voldoende dekking hebbende opstalverzekering.';
 
@@ -98,6 +101,8 @@ const TermsheetForm = (() => {
 
     const today      = new Date().toISOString().slice(0, 10);
     const baseDate   = d.date || today;
+    const firstBorrowerType = (borrowers[0]?.type) || 'privepersoon';
+    const defaultBetalingswijze = firstBorrowerType === 'bv' ? DEFAULT_BETALINGSWIJZE : DEFAULT_BETALINGSWIJZE_PRIVE;
     const adviseurs  = getAdviseurs();
     const faciliteiten = getFaciliteiten();
 
@@ -253,7 +258,8 @@ const TermsheetForm = (() => {
         <div class="form-row" style="align-items:flex-end">
           <div class="form-group" style="flex:1">
             <label>Termijnbedrag (maandelijks)</label>
-            <input type="number" id="ts-termijnbedrag" value="${d.termijnbedrag || ''}" placeholder="Bijv. 4250" min="0" step="1">
+            <input type="number" id="ts-termijnbedrag" value="${d.termijnbedrag || ''}" placeholder="Bijv. 4250" min="0" step="1"
+              oninput="TermsheetForm.updateTermijnInfo()">
             <div id="ts-termijn-hint" style="font-size:11px;color:#888;margin-top:3px;display:${(d.aflossing||'').toLowerCase().includes('lineair') ? 'block' : 'none'}">
               Bij lineaire aflossing is dit het gemiddelde maandbedrag.
             </div>
@@ -266,22 +272,38 @@ const TermsheetForm = (() => {
             </button>
           </div>
         </div>
+        <div class="form-row" style="margin-top:.25rem">
+          <div class="form-group">
+            <label style="color:#888">Administratiekosten p/m (berekend)</label>
+            <input type="text" id="ts-admin-computed" readonly style="background:#f5f5f5;color:#666" value="">
+          </div>
+          <div class="form-group">
+            <label style="color:#888">Totaal per maand (berekend)</label>
+            <input type="text" id="ts-totaal-computed" readonly style="background:#f5f5f5;color:#666" value="">
+          </div>
+        </div>
 
         <div style="margin-top:.75rem">
           <label style="font-size:12px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.3px">Entreekosten</label>
           <div class="form-row-3" style="margin-top:.4rem">
             <div class="form-group">
               <label>Afsluitkosten (€)</label>
-              <input type="number" id="ts-afsluit" value="${entree.afsluit || ''}" placeholder="Bijv. 2000" min="0" step="1">
+              <input type="number" id="ts-afsluit" value="${entree.afsluit || ''}" placeholder="Bijv. 2000" min="0" step="1"
+                oninput="TermsheetForm.updateOpstartRestant()">
             </div>
             <div class="form-group">
               <label>Opstartkosten (€)</label>
-              <input type="number" id="ts-opstart" value="${entree.opstart || ''}" placeholder="Bijv. 500" min="0" step="1">
+              <input type="number" id="ts-opstart" value="${entree.opstart || ''}" placeholder="Bijv. 500" min="0" step="1"
+                oninput="TermsheetForm.updateOpstartRestant()">
             </div>
             <div class="form-group">
               <label>Annuleringskosten (€)</label>
               <input type="number" id="ts-annulering" value="${entree.annulering || ''}" placeholder="Bijv. 1000" min="0" step="1">
             </div>
+          </div>
+          <div class="form-group" style="margin-top:.4rem">
+            <label style="color:#888">Restant bij passering (berekend)</label>
+            <input type="text" id="ts-opstart-restant" readonly style="background:#f5f5f5;color:#666" value="">
           </div>
         </div>
 
@@ -295,7 +317,7 @@ const TermsheetForm = (() => {
       ${section('Aanvullende bepalingen', `
         <div class="form-group">
           <label>Betalingswijze</label>
-          <textarea id="ts-betalingswijze" rows="3">${escHtml(d.betalingswijze !== undefined ? d.betalingswijze : DEFAULT_BETALINGSWIJZE)}</textarea>
+          <textarea id="ts-betalingswijze" rows="3" oninput="this.dataset.userEdited='1'">${escHtml(d.betalingswijze !== undefined ? d.betalingswijze : defaultBetalingswijze)}</textarea>
         </div>
         <div class="form-group">
           <label>Zekerheden (omschrijving)</label>
@@ -358,6 +380,8 @@ const TermsheetForm = (() => {
         </div>
       `)}
     `;
+
+    setTimeout(() => { updateTermijnInfo(); updateOpstartRestant(); }, 0);
   }
 
   // ── Section wrapper ──────────────────────────────────────
@@ -432,7 +456,8 @@ const TermsheetForm = (() => {
   function loanPartRow(lp, i) {
     const label = lp.typeLabel || 'Termijnlening';
     return `<div class="dyn-row" id="ts-lp-${i}">
-      <input type="number" placeholder="Bedrag" value="${lp.amount||''}" style="flex:1;min-width:120px" class="ts-lp-amount" min="0" step="1">
+      <input type="number" placeholder="Bedrag" value="${lp.amount||''}" style="flex:1;min-width:120px" class="ts-lp-amount" min="0" step="1"
+        oninput="TermsheetForm.updateTermijnInfo()">
       <select class="ts-lp-label" style="flex:1">
         <option value="Termijnlening"${label === 'Termijnlening' ? ' selected' : ''}>Termijnlening</option>
         <option value="Rentedepot"${label === 'Rentedepot' ? ' selected' : ''}>Rentedepot</option>
@@ -469,6 +494,12 @@ const TermsheetForm = (() => {
     const bvFields   = row.querySelector('.ts-b-bv-fields');
     if (privFields) privFields.style.display = type === 'bv' ? 'none' : '';
     if (bvFields)   bvFields.style.display   = type === 'bv' ? '' : 'none';
+    if (i === 0) {
+      const betalingswijzeEl = document.getElementById('ts-betalingswijze');
+      if (betalingswijzeEl && !betalingswijzeEl.dataset.userEdited) {
+        betalingswijzeEl.value = type === 'bv' ? DEFAULT_BETALINGSWIJZE : DEFAULT_BETALINGSWIJZE_PRIVE;
+      }
+    }
   }
 
   function toggleHolding(i) {
@@ -807,11 +838,41 @@ const TermsheetForm = (() => {
       maandbedrag = P * rMaand;
     }
 
-    document.getElementById('ts-termijnbedrag').value = Math.round(maandbedrag);
+    document.getElementById('ts-termijnbedrag').value = maandbedrag.toFixed(2);
 
     // Toon/verberg lineair-hint
     const hint = document.getElementById('ts-termijn-hint');
     if (hint) hint.style.display = aflossing.toLowerCase().includes('lineair') ? 'block' : 'none';
+
+    updateTermijnInfo();
+  }
+
+  // ── Computed field updaters ───────────────────────────────
+  function updateTermijnInfo() {
+    const totalLoan = [...document.querySelectorAll('#ts-loanpart-rows .dyn-row')].reduce((sum, row) => {
+      return sum + (parseFloat(row.querySelector('.ts-lp-amount')?.value) || 0);
+    }, 0);
+    const termijn = parseFloat(document.getElementById('ts-termijnbedrag')?.value) || 0;
+    const admin   = totalLoan * 0.0007;
+    const totaal  = termijn + admin;
+    const adminEl  = document.getElementById('ts-admin-computed');
+    const totaalEl = document.getElementById('ts-totaal-computed');
+    if (adminEl)  adminEl.value  = totalLoan > 0 ? `€ ${admin.toFixed(2).replace('.', ',')}` : '';
+    if (totaalEl) totaalEl.value = (termijn > 0 || totalLoan > 0) ? `€ ${totaal.toFixed(2).replace('.', ',')}` : '';
+  }
+
+  function updateOpstartRestant() {
+    const afsluit = parseFloat(document.getElementById('ts-afsluit')?.value) || 0;
+    const opstart = parseFloat(document.getElementById('ts-opstart')?.value) || 0;
+    const restant = afsluit - opstart;
+    const el = document.getElementById('ts-opstart-restant');
+    if (el) {
+      if (opstart > 0 && afsluit > 0) {
+        el.value = `€ ${Math.round(restant > 0 ? restant : 0).toLocaleString('nl-NL')},-`;
+      } else {
+        el.value = '';
+      }
+    }
   }
 
   // ── Helpers ──────────────────────────────────────────────
@@ -835,5 +896,6 @@ const TermsheetForm = (() => {
     _dragStart, _dragOver, _dragEnd, _dragDrop,
     _mgrRemove, _mgrAdd,
     berekenTermijn,
+    updateTermijnInfo, updateOpstartRestant,
   };
 })();

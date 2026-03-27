@@ -149,6 +149,15 @@ const TermsheetGenerator = (() => {
     return `€ ${formatted},-`;
   }
 
+  function fmtEuro2dec(n) {
+    if (!n && n !== 0) return '—';
+    const num = Number(n);
+    const formatted = new Intl.NumberFormat('nl-NL', {
+      minimumFractionDigits: 2, maximumFractionDigits: 2
+    }).format(num);
+    return `€ ${formatted}`;
+  }
+
   function fmtNlDate(iso) {
     if (!iso) return '—';
     try {
@@ -409,10 +418,25 @@ const TermsheetGenerator = (() => {
       : [condRow('Lening', [tx(loanParts[0] ? fmtEuro(loanParts[0].amount) : loanTotalTxt, { bold: true, size: SZ_SMALL })],
                  { boldLabel: true })];
 
+    // Termijnbedrag: 3 lines
+    const termijnNum   = Number(data.termijnbedrag) || 0;
+    const adminKosten  = totalLoan * 0.0007;
+    const totalPerMaand = termijnNum + adminKosten;
+    const termijnPars = termijnNum > 0
+      ? [
+          par([tx(`${fmtEuro2dec(termijnNum)} exclusief administratiekosten`, { size: SZ_SMALL })], { before: 30, after: 10 }),
+          par([tx(`Administratiekosten: ${fmtEuro(adminKosten)} per maand`, { size: SZ_SMALL })], { before: 10, after: 10 }),
+          par([tx(`Totaal per maand: ${fmtEuro(totalPerMaand)}`, { size: SZ_SMALL })], { before: 10, after: 30 }),
+        ]
+      : [par([tx('—', { size: SZ_SMALL })], { before: 50, after: 50 })];
+
     // Entreekosten
     const entreeLines = [];
-    if (entree.afsluit)    entreeLines.push(`Afsluitkosten: ${fmtEuro(entree.afsluit)}`);
-    if (entree.opstart)    entreeLines.push(`Opstartkosten: ${fmtEuro(entree.opstart)}`);
+    if (entree.afsluit) entreeLines.push(`Afsluitkosten: ${fmtEuro(entree.afsluit)}`);
+    if (entree.opstart) {
+      const restant = (entree.afsluit || 0) - entree.opstart;
+      entreeLines.push(`Opstartkosten: ${fmtEuro(entree.opstart)} te voldoen direct bij ondertekening van de termsheet. Dit zal verrekend worden met de totale afsluitkosten, waardoor bij passering nog ${fmtEuro(restant > 0 ? restant : 0)} is te voldoen.`);
+    }
     if (entree.annulering) entreeLines.push(`Annuleringskosten: ${fmtEuro(entree.annulering)}`);
     const entreePars = entreeLines.length
       ? entreeLines.map(l => par([tx(l, { size: SZ_SMALL })], { before: 30, after: 30 }))
@@ -429,7 +453,7 @@ const TermsheetGenerator = (() => {
       condRow('Aflossing',       [tx(data.aflossing || '—', { size: SZ_SMALL })]),
       condRow('Rente',           multilinePars(data.rente)),
       condRow('Administratiekosten', [tx(data.administratiekosten || '—', { size: SZ_SMALL })]),
-      condRow('Termijnbedrag',   [tx(data.termijnbedrag ? fmtEuro(data.termijnbedrag) : '—', { size: SZ_SMALL })]),
+      condRow('Termijnbedrag',   termijnPars),
       condRow('Rentegrondslag',  [tx(data.rentegrondslag || '—', { size: SZ_SMALL })]),
       condRow('Entreekosten',    entreePars),
       condRow('(Extra) Aflossen', [tx(data.extraAflossen || '—', { size: SZ_SMALL })]),
@@ -449,11 +473,11 @@ const TermsheetGenerator = (() => {
     if (data.zekerheden) {
       zekerhedenPars.push(par([tx(data.zekerheden, { size: SZ_SMALL })], { before: 50, after: 30 }));
     }
-    objects.forEach((o, i) => {
+    objects.forEach((o) => {
       if (o.description) {
         zekerhedenPars.push(par([
-          tx(`Object ${i+1}: ${o.description}`, { size: SZ_SMALL }),
-        ], { before: 20, after: 20, indent: MM(4) }));
+          tx(o.description, { size: SZ_SMALL }),
+        ], { before: 20, after: 20 }));
       }
     });
     if (!zekerhedenPars.length) zekerhedenPars.push(par([tx('—', { size: SZ_SMALL })], { before: 50, after: 50 }));
