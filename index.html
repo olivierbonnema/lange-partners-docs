@@ -8,52 +8,30 @@
 </head>
 <body>
 
-<!-- ── Password Wall ── -->
-<div id="password-wall" style="display:none;position:fixed;inset:0;z-index:9999;background:#f5f4f7;display:flex;align-items:center;justify-content:center">
-  <div style="text-align:center;max-width:340px;padding:2rem">
+<!-- ── Login scherm ── -->
+<div id="login-screen" style="display:none;position:fixed;inset:0;z-index:9999;background:#f5f4f7;align-items:center;justify-content:center">
+  <div style="text-align:center;max-width:340px;width:100%;padding:2rem">
     <div style="font-size:1.5rem;font-weight:700;color:#2E2060;margin-bottom:.25rem">LANGE &amp; PARTNERS</div>
     <div style="color:#888;font-size:.85rem;margin-bottom:2rem">Financieel Advies</div>
-    <div style="margin-bottom:1rem">
-      <input type="password" id="pw-input" placeholder="Wachtwoord" style="width:100%;padding:.65rem 1rem;border:1px solid #d0cfe0;border-radius:8px;font-size:.95rem;outline:none;text-align:center" onkeydown="if(event.key==='Enter')document.getElementById('pw-btn').click()">
+    <div style="margin-bottom:.75rem">
+      <input type="email" id="login-email" placeholder="E-mailadres" autocomplete="email"
+        style="width:100%;padding:.65rem 1rem;border:1px solid #d0cfe0;border-radius:8px;font-size:.95rem;outline:none;box-sizing:border-box"
+        onkeydown="if(event.key==='Enter')document.getElementById('login-password').focus()">
     </div>
-    <div id="pw-error" style="color:#c0392b;font-size:.8rem;margin-bottom:.75rem;display:none">Onjuist wachtwoord</div>
-    <button id="pw-btn" onclick="checkPassword()" style="width:100%;padding:.65rem;background:#2E2060;color:#fff;border:none;border-radius:8px;font-size:.95rem;cursor:pointer;font-weight:600">Inloggen</button>
+    <div style="margin-bottom:1rem">
+      <input type="password" id="login-password" placeholder="Wachtwoord" autocomplete="current-password"
+        style="width:100%;padding:.65rem 1rem;border:1px solid #d0cfe0;border-radius:8px;font-size:.95rem;outline:none;box-sizing:border-box"
+        onkeydown="if(event.key==='Enter')App.login()">
+    </div>
+    <div id="login-error" style="color:#c0392b;font-size:.8rem;margin-bottom:.75rem;display:none"></div>
+    <button id="login-btn" onclick="App.login()"
+      style="width:100%;padding:.65rem;background:#2E2060;color:#fff;border:none;border-radius:8px;font-size:.95rem;cursor:pointer;font-weight:600">
+      Inloggen
+    </button>
   </div>
 </div>
 
-<script>
-(function(){
-  var hash = '5a0b3f9c2d8e7a1b';
-  function simpleHash(s){var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return(h>>>0).toString(16);}
-  var correctHash = simpleHash('L&P26-Re34');
-  window.checkPassword = function(){
-    var input = document.getElementById('pw-input').value;
-    if(simpleHash(input) === correctHash){
-      sessionStorage.setItem('lp_auth','1');
-      document.getElementById('password-wall').style.display='none';
-      document.getElementById('app').style.display='';
-    } else {
-      document.getElementById('pw-error').style.display='block';
-      document.getElementById('pw-input').value='';
-      document.getElementById('pw-input').focus();
-    }
-  };
-  if(sessionStorage.getItem('lp_auth')==='1'){
-    document.addEventListener('DOMContentLoaded',function(){
-      document.getElementById('password-wall').style.display='none';
-      document.getElementById('app').style.display='';
-    });
-  } else {
-    document.addEventListener('DOMContentLoaded',function(){
-      document.getElementById('password-wall').style.display='flex';
-      document.getElementById('app').style.display='none';
-      document.getElementById('pw-input').focus();
-    });
-  }
-})();
-</script>
-
-<div id="app">
+<div id="app" style="display:none">
 
   <!-- ── Sidebar ── -->
   <nav id="sidebar">
@@ -73,6 +51,13 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
         Instellingen
       </a>
+    </div>
+    <div style="padding:1rem;border-top:1px solid var(--border);margin-top:auto">
+      <div style="font-size:.75rem;color:#aaa;margin-bottom:.4rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="user-email"></div>
+      <button class="btn btn-ghost" onclick="App.logout()" style="width:100%;text-align:left;font-size:.8rem;color:#888;display:flex;align-items:center;gap:.4rem">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Uitloggen
+      </button>
     </div>
   </nav>
 
@@ -256,6 +241,12 @@
 <!-- Toast notification -->
 <div id="toast" class="toast" style="display:none"></div>
 
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- Firebase configuratie -->
+<script src="firebase-config.js"></script>
 <!-- docx library (browser build) -->
 <script src="https://unpkg.com/docx@8.2.4/build/index.umd.js"></script>
 <!-- App scripts -->

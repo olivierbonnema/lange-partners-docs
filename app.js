@@ -16,23 +16,52 @@ const App = (() => {
     filterType: 'all',
   };
 
-  const LS_DOCS = 'lp_documents';
   const LS_SETTINGS = 'lp_settings';
 
-  // ── LocalStorage helpers ────────────────────────────────
-  function getDocs() {
-    try { return JSON.parse(localStorage.getItem(LS_DOCS) || '[]'); }
-    catch { return []; }
-  }
-  function saveDocs(docs) {
-    localStorage.setItem(LS_DOCS, JSON.stringify(docs));
-  }
+  // ── Settings (localStorage, per apparaat) ──────────────
   function getSettings() {
     try { return JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}'); }
     catch { return {}; }
   }
   function persistSettings(s) {
     localStorage.setItem(LS_SETTINGS, JSON.stringify(s));
+  }
+
+  // ── Firestore helpers ───────────────────────────────────
+  async function fetchDocs() {
+    const snap = await db.collection('documents').orderBy('updatedAt', 'desc').get();
+    return snap.docs.map(d => d.data());
+  }
+  async function saveDocToFirestore(doc) {
+    await db.collection('documents').doc(doc.id).set(doc);
+  }
+  async function deleteDocFromFirestore(id) {
+    await db.collection('documents').doc(id).delete();
+  }
+
+  // ── Auth ─────────────────────────────────────────────────
+  async function login() {
+    const email    = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    const errEl    = document.getElementById('login-error');
+    const btn      = document.getElementById('login-btn');
+
+    errEl.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Inloggen…';
+
+    try {
+      await auth.signInWithEmailAndPassword(email, password);
+    } catch (e) {
+      errEl.textContent = 'Onjuiste e-mail of wachtwoord.';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Inloggen';
+    }
+  }
+
+  function logout() {
+    auth.signOut();
   }
 
   // ── Utility ─────────────────────────────────────────────
@@ -48,7 +77,9 @@ const App = (() => {
     if (!n && n !== 0) return '';
     return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n);
   }
-
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
   function toast(msg, duration = 2500) {
     const el = document.getElementById('toast');
     el.textContent = msg;
@@ -71,30 +102,35 @@ const App = (() => {
 
     if (view === 'home') renderDocList();
     if (view === 'settings') loadSettingsForm();
-    if (view === 'document') {
-      // already set up by showNewDocument / editDocument
-    }
   }
 
   // ── Home – Document list ────────────────────────────────
-  function renderDocList() {
-    const docs = getDocs();
-    const list = document.getElementById('document-list');
+  async function renderDocList() {
+    const list  = document.getElementById('document-list');
     const empty = document.getElementById('empty-state');
-    const filter = state.filterType;
+    list.innerHTML = '<div style="color:#888;padding:2rem;text-align:center">Laden…</div>';
+    empty.style.display = 'none';
 
-    let filtered = filter === 'all' ? docs : docs.filter(d => d.type === filter);
-    filtered = filtered.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    let docs;
+    try {
+      docs = await fetchDocs();
+    } catch (e) {
+      list.innerHTML = '<div style="color:#c0392b;padding:2rem;text-align:center">Fout bij laden van documenten.</div>';
+      return;
+    }
+
+    const filter   = state.filterType;
+    const filtered = filter === 'all' ? docs : docs.filter(d => d.type === filter);
 
     if (!filtered.length) {
       list.innerHTML = '';
-      empty.style.display = docs.length && filter !== 'all' ? 'block' : 'block';
+      empty.style.display = 'block';
       if (docs.length && filter !== 'all') {
         empty.querySelector('h3').textContent = 'Geen ' + filter + ' documenten';
-        empty.querySelector('p').textContent = 'Er zijn geen documenten van dit type.';
+        empty.querySelector('p').textContent  = 'Er zijn geen documenten van dit type.';
       } else {
         empty.querySelector('h3').textContent = 'Geen documenten';
-        empty.querySelector('p').textContent = 'Maak uw eerste document aan door op "Nieuw document" te klikken.';
+        empty.querySelector('p').textContent  = 'Maak uw eerste document aan door op "Nieuw document" te klikken.';
       }
       return;
     }
@@ -104,11 +140,14 @@ const App = (() => {
       const amount = doc.data && doc.data.financieringsbehoefte
         ? fmtAmount(doc.data.financieringsbehoefte)
         : (doc.data && doc.data.loanAmount ? fmtAmount(doc.data.loanAmount) : '');
+      const by = doc.createdBy
+        ? `<span style="font-size:.75rem;color:#aaa"> · ${escHtml(doc.createdBy)}</span>`
+        : '';
       return `
         <div class="doc-card" onclick="App.editDocument('${doc.id}')">
           <span class="doc-badge ${doc.type}">${doc.type === 'pitch' ? 'Pitch' : 'Termsheet'}</span>
           <div class="doc-info">
-            <div class="doc-name">${escHtml(doc.name || 'Naamloos')}</div>
+            <div class="doc-name">${escHtml(doc.name || 'Naamloos')}${by}</div>
             <div class="doc-meta">${fmtDate(doc.updatedAt)}${amount ? ' · ' + amount : ''}</div>
           </div>
           <div class="doc-actions" onclick="event.stopPropagation()">
@@ -119,16 +158,12 @@ const App = (() => {
     }).join('');
   }
 
-  function escHtml(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
   // ── New document ────────────────────────────────────────
   function showNewDocument() {
-    state.editingId = null;
-    state.docType = null;
+    state.editingId   = null;
+    state.docType     = null;
     state.currentData = null;
-    state.lastBlob = null;
+    state.lastBlob    = null;
     document.getElementById('wizard-doc-title').textContent = 'Nieuw document';
     navigate('document');
     showWizardStep(1);
@@ -142,7 +177,7 @@ const App = (() => {
 
   function renderForm() {
     const container = document.getElementById('form-container');
-    const settings = getSettings();
+    const settings  = getSettings();
     if (state.docType === 'pitch') {
       PitchForm.render(container, state.currentData, settings);
     } else {
@@ -166,47 +201,52 @@ const App = (() => {
   }
 
   // ── Edit existing document ──────────────────────────────
-  function editDocument(id) {
-    const docs = getDocs();
-    const doc = docs.find(d => d.id === id);
-    if (!doc) return;
-    state.editingId = id;
-    state.docType = doc.type;
-    state.currentData = doc.data || {};
-    document.getElementById('wizard-doc-title').textContent = doc.name || 'Document';
-    navigate('document');
-    showWizardStep(2);
-    renderForm();
+  async function editDocument(id) {
+    try {
+      const snap = await db.collection('documents').doc(id).get();
+      if (!snap.exists) return;
+      const doc = snap.data();
+      state.editingId   = id;
+      state.docType     = doc.type;
+      state.currentData = doc.data || {};
+      document.getElementById('wizard-doc-title').textContent = doc.name || 'Document';
+      navigate('document');
+      showWizardStep(2);
+      renderForm();
+    } catch (e) {
+      toast('Fout bij laden document.');
+    }
   }
 
   // ── Save ────────────────────────────────────────────────
-  function saveCurrentDoc() {
+  async function saveCurrentDoc() {
     const data = collectFormData();
     if (!data) return;
-    const docs = getDocs();
-    const name = deriveDocName(data);
-    const now = new Date().toISOString();
+    const name       = deriveDocName(data);
+    const now        = new Date().toISOString();
+    const createdBy  = auth.currentUser ? auth.currentUser.email : '';
 
-    if (state.editingId) {
-      const idx = docs.findIndex(d => d.id === state.editingId);
-      if (idx >= 0) {
-        docs[idx] = { ...docs[idx], name, updatedAt: now, data };
-        saveDocs(docs);
-        toast('Document opgeslagen.');
+    try {
+      if (state.editingId) {
+        await db.collection('documents').doc(state.editingId).set(
+          { name, updatedAt: now, data },
+          { merge: true }
+        );
+      } else {
+        const id = uid();
+        state.editingId = id;
+        await saveDocToFirestore({ id, type: state.docType, name, createdAt: now, updatedAt: now, data, createdBy });
       }
-    } else {
-      const id = uid();
-      state.editingId = id;
-      docs.push({ id, type: state.docType, name, createdAt: now, updatedAt: now, data });
-      saveDocs(docs);
+      state.currentData = data;
       toast('Document opgeslagen.');
+    } catch (e) {
+      toast('Fout bij opslaan: ' + e.message, 4000);
     }
-    state.currentData = data;
   }
 
   function collectFormData() {
-    if (state.docType === 'pitch') return PitchForm.getData();
-    if (state.docType === 'termsheet') return TermsheetForm.getData();
+    if (state.docType === 'pitch')      return PitchForm.getData();
+    if (state.docType === 'termsheet')  return TermsheetForm.getData();
     return null;
   }
 
@@ -224,33 +264,38 @@ const App = (() => {
     const data = collectFormData();
     if (!data) { toast('Fout bij ophalen formuliergegevens.'); return; }
 
-    // Auto-save first
-    const docs = getDocs();
-    const name = deriveDocName(data);
-    const now = new Date().toISOString();
-    if (state.editingId) {
-      const idx = docs.findIndex(d => d.id === state.editingId);
-      if (idx >= 0) { docs[idx] = { ...docs[idx], name, updatedAt: now, data }; }
-      else { docs.push({ id: state.editingId, type: state.docType, name, createdAt: now, updatedAt: now, data }); }
-    } else {
-      const id = uid();
-      state.editingId = id;
-      docs.push({ id, type: state.docType, name, createdAt: now, updatedAt: now, data });
+    // Auto-save naar Firestore
+    const name      = deriveDocName(data);
+    const now       = new Date().toISOString();
+    const createdBy = auth.currentUser ? auth.currentUser.email : '';
+
+    try {
+      if (state.editingId) {
+        await db.collection('documents').doc(state.editingId).set(
+          { name, updatedAt: now, data },
+          { merge: true }
+        );
+      } else {
+        const id = uid();
+        state.editingId = id;
+        await saveDocToFirestore({ id, type: state.docType, name, createdAt: now, updatedAt: now, data, createdBy });
+      }
+      state.currentData = data;
+    } catch (e) {
+      console.warn('Auto-save mislukt:', e);
     }
-    saveDocs(docs);
-    state.currentData = data;
 
     const settings = getSettings();
     try {
       let blob, filename;
       if (state.docType === 'pitch') {
-        blob = await PitchGenerator.generate(data, settings);
+        blob     = await PitchGenerator.generate(data, settings);
         filename = `Pitch_${name.replace(/\s+/g,'_')}_${todayStr()}.docx`;
       } else {
-        blob = await TermsheetGenerator.generate(data, settings);
+        blob     = await TermsheetGenerator.generate(data, settings);
         filename = `Termsheet_${name.replace(/\s+/g,'_')}_${todayStr()}.docx`;
       }
-      state.lastBlob = blob;
+      state.lastBlob     = blob;
       state.lastFilename = filename;
       downloadBlob(blob, filename);
       showWizardStep(3);
@@ -265,18 +310,18 @@ const App = (() => {
   }
 
   async function downloadExisting(id) {
-    const docs = getDocs();
-    const doc = docs.find(d => d.id === id);
-    if (!doc) return;
-    const settings = getSettings();
     try {
+      const snap = await db.collection('documents').doc(id).get();
+      if (!snap.exists) return;
+      const doc      = snap.data();
+      const settings = getSettings();
+      const name     = doc.name || 'document';
       let blob, filename;
-      const name = doc.name || 'document';
       if (doc.type === 'pitch') {
-        blob = await PitchGenerator.generate(doc.data, settings);
+        blob     = await PitchGenerator.generate(doc.data, settings);
         filename = `Pitch_${name.replace(/\s+/g,'_')}_${todayStr()}.docx`;
       } else {
-        blob = await TermsheetGenerator.generate(doc.data, settings);
+        blob     = await TermsheetGenerator.generate(doc.data, settings);
         filename = `Termsheet_${name.replace(/\s+/g,'_')}_${todayStr()}.docx`;
       }
       downloadBlob(blob, filename);
@@ -289,7 +334,7 @@ const App = (() => {
 
   function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a   = document.createElement('a');
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click();
     document.body.removeChild(a);
@@ -304,20 +349,19 @@ const App = (() => {
   let pendingDeleteId = null;
   function confirmDelete(id) {
     pendingDeleteId = id;
-    const docs = getDocs();
-    const doc = docs.find(d => d.id === id);
     document.getElementById('modal-title').textContent = 'Document verwijderen';
-    document.getElementById('modal-msg').textContent =
-      `Weet u zeker dat u "${doc ? doc.name : 'dit document'}" wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`;
+    document.getElementById('modal-msg').textContent   = 'Weet u zeker dat u dit document wilt verwijderen? Dit kan niet ongedaan worden gemaakt.';
     document.getElementById('modal-ok').onclick = () => { deleteDocument(id); closeModal(); };
     document.getElementById('modal-overlay').style.display = 'flex';
   }
-  function deleteDocument(id) {
-    let docs = getDocs();
-    docs = docs.filter(d => d.id !== id);
-    saveDocs(docs);
-    renderDocList();
-    toast('Document verwijderd.');
+  async function deleteDocument(id) {
+    try {
+      await deleteDocFromFirestore(id);
+      renderDocList();
+      toast('Document verwijderd.');
+    } catch (e) {
+      toast('Fout bij verwijderen: ' + e.message, 4000);
+    }
   }
   function closeModal(e) {
     if (e && e.target !== document.getElementById('modal-overlay')) return;
@@ -328,19 +372,19 @@ const App = (() => {
   // ── Settings ────────────────────────────────────────────
   function loadSettingsForm() {
     const s = getSettings();
-    setVal('s-advisor-name', s.advisorName || '');
+    setVal('s-advisor-name',  s.advisorName  || '');
     setVal('s-advisor-phone', s.advisorPhone || '');
     setVal('s-advisor-email', s.advisorEmail || '');
-    setVal('s-company', s.companyName || 'Lange & Partners Financieel Advies');
-    setVal('s-notaris', s.notaris || '');
+    setVal('s-company',       s.companyName  || 'Lange & Partners Financieel Advies');
+    setVal('s-notaris',       s.notaris      || '');
 
-    const zone = document.getElementById('logo-preview-area');
+    const zone   = document.getElementById('logo-preview-area');
     const delBtn = document.getElementById('btn-del-logo');
     if (s.logoDataUrl) {
-      zone.innerHTML = `<img src="${s.logoDataUrl}" alt="Logo">`;
+      zone.innerHTML   = `<img src="${s.logoDataUrl}" alt="Logo">`;
       delBtn.style.display = '';
     } else {
-      zone.innerHTML = `<img src="${DEFAULT_LOGO_DATA_URL}" alt="Lange & Partners logo" style="max-height:60px;max-width:280px;object-fit:contain;">
+      zone.innerHTML   = `<img src="${DEFAULT_LOGO_DATA_URL}" alt="Lange & Partners logo" style="max-height:60px;max-width:280px;object-fit:contain;">
         <p class="hint" style="margin-top:0.5rem;">Standaard logo — klik om eigen logo te uploaden</p>`;
       delBtn.style.display = 'none';
     }
@@ -391,6 +435,28 @@ const App = (() => {
 
   // ── Init ─────────────────────────────────────────────────
   function init() {
+    // Auth state: Firebase bepaalt wat zichtbaar is
+    auth.onAuthStateChanged(user => {
+      const loginScreen = document.getElementById('login-screen');
+      const appEl       = document.getElementById('app');
+      if (user) {
+        loginScreen.style.display = 'none';
+        appEl.style.display       = '';
+        document.getElementById('user-email').textContent = user.email;
+        navigate('home');
+      } else {
+        loginScreen.style.display = 'flex';
+        appEl.style.display       = 'none';
+        // Reset login form
+        document.getElementById('login-email').value       = '';
+        document.getElementById('login-password').value    = '';
+        document.getElementById('login-error').style.display = 'none';
+        const btn = document.getElementById('login-btn');
+        btn.disabled    = false;
+        btn.textContent = 'Inloggen';
+      }
+    });
+
     // Nav links
     document.querySelectorAll('.nav-link').forEach(link => {
       link.addEventListener('click', e => {
@@ -413,8 +479,6 @@ const App = (() => {
     document.getElementById('modal-overlay').addEventListener('click', function(e) {
       if (e.target === this) closeModal(e);
     });
-
-    navigate('home');
   }
 
   // Public API
@@ -435,6 +499,8 @@ const App = (() => {
     saveSettings,
     handleLogoUpload,
     removeLogo,
+    login,
+    logout,
   };
 })();
 
