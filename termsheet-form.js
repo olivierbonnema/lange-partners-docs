@@ -23,7 +23,7 @@ const TermsheetForm = (() => {
     'De Kredietnemer zorgt voor de gebruikelijke en voldoende dekking hebbende opstalverzekering.';
 
   const DEFAULT_BESCHIKBAARHEID =
-    'De lening is beschikbaar na ondertekening van de leningsovereenkomst en afgifte van alle gevraagde zekerheden, doch uiterlijk 3 maanden na dagtekening van deze Termsheet.';
+    'De lening is beschikbaar na ondertekening van de leningsovereenkomst en afgifte van alle gevraagde zekerheden, doch uiterlijk 2 maanden na dagtekening van deze Termsheet.';
 
   const DEFAULT_RENTEGRONDSLAG =
     'Ten behoeve van de berekening van de rente wordt de maand op het werkelijke aantal dagen en het kalenderjaar op 360 dagen gesteld.';
