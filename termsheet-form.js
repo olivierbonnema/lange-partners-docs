@@ -34,13 +34,22 @@ const TermsheetForm = (() => {
   const DEFAULT_EXTRA_AFLOSSEN =
     'Indien u de lening geheel of gedeeltelijk aflost binnen 12 maanden na passeren bedragen de kosten 12 maanden het termijnbedrag verminderd met de reeds betaalde termijnbedragen. Na 12 maanden kan er volledig boetevrij worden afgelost met een aanzegtermijn van minimaal 1 maand. Minimale aflossing bedraagt € 50.000,- per transactie met een administratievergoeding van € 250,- per keer.';
 
-  const DEFAULT_VOORAF_CONDITIES = [
-    { text: 'Actueel taxatierapport van het onderpand', received: false },
-    { text: 'Hypotheekakte gepasseerd bij notaris', received: false },
-    { text: 'Bewijs van eigendom onderpand', received: false },
-    { text: 'Geldig legitimatiebewijs van alle kredietnemers', received: false },
-    { text: 'Bankafschriften afgelopen 3 maanden', received: false },
-  ];
+  function buildDefaultVoorafCondities(objectCount) {
+    const n = objectCount || 1;
+    const condities = [
+      { text: 'Geldig legitimatiebewijs van de kredietnemer', received: false },
+    ];
+    if (n === 1) {
+      condities.push({ text: 'Bewijs van eigendom object 1', received: false });
+    } else {
+      for (let i = 1; i <= n; i++) {
+        condities.push({ text: `Bewijs van eigendom object ${i}`, received: false });
+      }
+    }
+    condities.push({ text: 'Aangifte inkomstenbelasting van de kredietnemer', received: false });
+    condities.push({ text: 'Actueel taxatierapport van het onderpand', received: false });
+    return condities;
+  }
 
   const DEFAULT_ADVISEURS    = ['Marco Lange', 'Christian de Vries', 'Olivier Bonnema'];
   const DEFAULT_FACILITEITEN = [
@@ -74,11 +83,26 @@ const TermsheetForm = (() => {
     return d.toISOString().slice(0, 10);
   }
 
+  function addMonths(isoDate, months) {
+    if (!isoDate) return '';
+    const d = new Date(isoDate);
+    d.setMonth(d.getMonth() + months);
+    return d.toISOString().slice(0, 10);
+  }
+
   function onDateChange(value) {
-    const validity = document.getElementById('ts-validity');
     const deadline = document.getElementById('ts-signing-deadline');
-    if (validity && !validity.dataset.userEdited) validity.value = addDays(value, 7);
-    if (deadline && !deadline.dataset.userEdited) deadline.value = addDays(value, 7);
+    if (deadline && !deadline.dataset.userEdited) {
+      deadline.value = addDays(value, 7);
+      onDeadlineChange(deadline.value);
+    }
+  }
+
+  function onDeadlineChange(value) {
+    const validity = document.getElementById('ts-validity');
+    if (validity && !validity.dataset.userEdited) {
+      validity.value = addMonths(value, 1);
+    }
   }
 
   // ── Index helpers for dynamic rows ───────────────────────
@@ -95,8 +119,8 @@ const TermsheetForm = (() => {
     const s = settings || {};
     const borrowers = d.borrowers || [{ type: 'privepersoon', name: '', address: '', postalCode: '', city: '' }];
     const objects   = d.objects || [{ description: '', address: '', hypotheekRank: '1e', priorLienholders: [] }];
-    const loanParts = d.loanParts || [{ amount: '', typeLabel: 'Termijnlening' }];
-    const vooraf    = d.voorafgaandeCondities || DEFAULT_VOORAF_CONDITIES.map(c => ({...c}));
+    const loanParts = d.loanParts || [{ amount: '', typeLabel: 'Lening bij aanvang' }];
+    const vooraf    = d.voorafgaandeCondities || buildDefaultVoorafCondities(objects.length).map(c => ({...c}));
     const entree    = d.entreekosten || { afsluit: '', opstart: '', annulering: '' };
 
     const today      = new Date().toISOString().slice(0, 10);
@@ -289,7 +313,7 @@ const TermsheetForm = (() => {
             <div class="form-group">
               <label>Afsluitkosten (€)</label>
               <input type="number" id="ts-afsluit" value="${entree.afsluit || ''}" placeholder="Bijv. 2000" min="0" step="1"
-                oninput="TermsheetForm.updateOpstartRestant()">
+                oninput="this.dataset.userEdited='1';TermsheetForm.updateOpstartRestant()">
             </div>
             <div class="form-group">
               <label>Opstartkosten (€)</label>
@@ -298,7 +322,8 @@ const TermsheetForm = (() => {
             </div>
             <div class="form-group">
               <label>Annuleringskosten (€)</label>
-              <input type="number" id="ts-annulering" value="${entree.annulering || ''}" placeholder="Bijv. 1000" min="0" step="1">
+              <input type="number" id="ts-annulering" value="${entree.annulering || ''}" placeholder="Bijv. 1000" min="0" step="1"
+                oninput="this.dataset.userEdited='1'">
             </div>
           </div>
           <div class="form-group" style="margin-top:.4rem">
@@ -320,7 +345,8 @@ const TermsheetForm = (() => {
           <textarea id="ts-betalingswijze" rows="3" oninput="this.dataset.userEdited='1'">${escHtml(d.betalingswijze !== undefined ? d.betalingswijze : defaultBetalingswijze)}</textarea>
         </div>
         <div class="form-group">
-          <label style="color:#888;font-style:italic">Zekerheden worden automatisch gegenereerd op basis van de onderpanden hierboven.</label>
+          <label>Zekerheden <span style="font-weight:400;color:#888;font-size:11px">(preview — wordt automatisch gegenereerd)</span></label>
+          <textarea id="ts-zekerheden-preview" rows="6" readonly style="background:#f8f7fa;color:#555;cursor:default"></textarea>
         </div>
         <div class="form-group">
           <label>Verzekering</label>
@@ -367,20 +393,24 @@ const TermsheetForm = (() => {
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Geldigheidsduur (datum)</label>
-            <input type="date" id="ts-validity" value="${d.validityDate || addDays(baseDate, 7)}"
-              oninput="this.dataset.userEdited='1'">
-          </div>
-          <div class="form-group">
             <label>Ondertekeningsdeadline</label>
             <input type="date" id="ts-signing-deadline" value="${d.signingDeadline || addDays(baseDate, 7)}"
+              oninput="this.dataset.userEdited='1';TermsheetForm.onDeadlineChange(this.value)">
+          </div>
+          <div class="form-group">
+            <label>Geldigheidsduur (datum)</label>
+            <input type="date" id="ts-validity" value="${d.validityDate || addMonths(d.signingDeadline || addDays(baseDate, 7), 1)}"
               oninput="this.dataset.userEdited='1'">
           </div>
         </div>
       `)}
     `;
 
-    setTimeout(() => { updateTermijnInfo(); updateOpstartRestant(); }, 0);
+    setTimeout(() => {
+      updateTermijnInfo(); updateOpstartRestant(); updateZekerhedenPreview();
+      document.getElementById('ts-obj-rows')?.addEventListener('input', updateZekerhedenPreview);
+      document.getElementById('ts-loanpart-rows')?.addEventListener('input', updateZekerhedenPreview);
+    }, 0);
   }
 
   // ── Section wrapper ──────────────────────────────────────
@@ -498,12 +528,12 @@ const TermsheetForm = (() => {
   }
 
   function loanPartRow(lp, i) {
-    const label = lp.typeLabel || 'Termijnlening';
+    const label = lp.typeLabel || 'Lening bij aanvang';
     return `<div class="dyn-row" id="ts-lp-${i}">
       <input type="number" placeholder="Bedrag" value="${lp.amount||''}" style="flex:1;min-width:120px" class="ts-lp-amount" min="0" step="1"
         oninput="TermsheetForm.updateTermijnInfo()">
       <select class="ts-lp-label" style="flex:1">
-        <option value="Termijnlening"${label === 'Termijnlening' ? ' selected' : ''}>Termijnlening</option>
+        <option value="Lening bij aanvang"${label === 'Lening bij aanvang' ? ' selected' : ''}>Lening bij aanvang</option>
         <option value="Rentedepot"${label === 'Rentedepot' ? ' selected' : ''}>Rentedepot</option>
         <option value="Bouwdepot"${label === 'Bouwdepot' ? ' selected' : ''}>Bouwdepot</option>
       </select>
@@ -576,6 +606,7 @@ const TermsheetForm = (() => {
     if (numPriors < 1) {
       priorsContainer.style.display = 'none';
       while (priorsContainer.firstChild) priorsContainer.removeChild(priorsContainer.firstChild);
+      updateZekerhedenPreview();
       return;
     }
 
@@ -591,6 +622,7 @@ const TermsheetForm = (() => {
     for (let pi = 0; pi < numPriors; pi++) {
       priorsContainer.insertAdjacentHTML('beforeend', priorLienholderRow(existingData[pi] || {}, objIdx, pi));
     }
+    updateZekerhedenPreview();
   }
 
   function addObject() {
@@ -606,7 +638,7 @@ const TermsheetForm = (() => {
   function addLoanPart() {
     const rows = document.getElementById('ts-loanpart-rows');
     const i = nextIdx('#ts-loanpart-rows', 'ts-lp-');
-    rows.insertAdjacentHTML('beforeend', loanPartRow({ amount:'', typeLabel:'Termijnlening' }, i));
+    rows.insertAdjacentHTML('beforeend', loanPartRow({ amount:'', typeLabel:'Lening bij aanvang' }, i));
   }
   function removeLoanPart(i) {
     const el = document.getElementById('ts-lp-' + i);
@@ -829,7 +861,7 @@ const TermsheetForm = (() => {
     // Loan parts
     const loanParts = [...document.querySelectorAll('#ts-loanpart-rows .dyn-row')].map(row => ({
       amount:    parseFloat(row.querySelector('.ts-lp-amount')?.value) || 0,
-      typeLabel: row.querySelector('.ts-lp-label')?.value || 'Termijnlening',
+      typeLabel: row.querySelector('.ts-lp-label')?.value || 'Lening bij aanvang',
     })).filter(lp => lp.amount > 0);
 
     const loanAmount = loanParts.reduce((s, lp) => s + lp.amount, 0);
@@ -944,6 +976,16 @@ const TermsheetForm = (() => {
     const totaalEl = document.getElementById('ts-totaal-computed');
     if (adminEl)  adminEl.value  = totalLoan > 0 ? `€ ${admin.toFixed(2).replace('.', ',')}` : '';
     if (totaalEl) totaalEl.value = (termijn > 0 || totalLoan > 0) ? `€ ${totaal.toFixed(2).replace('.', ',')}` : '';
+
+    const afsluitEl = document.getElementById('ts-afsluit');
+    if (afsluitEl && !afsluitEl.dataset.userEdited && totalLoan > 0) {
+      afsluitEl.value = Math.max(Math.round(totalLoan * 0.01), 3000);
+      updateOpstartRestant();
+    }
+    const annuleringEl = document.getElementById('ts-annulering');
+    if (annuleringEl && !annuleringEl.dataset.userEdited && totalLoan > 0) {
+      annuleringEl.value = Math.max(Math.round(totalLoan * 0.01), 3000);
+    }
   }
 
   function updateOpstartRestant() {
@@ -958,6 +1000,67 @@ const TermsheetForm = (() => {
         el.value = '';
       }
     }
+  }
+
+  // ── Zekerheden preview ────────────────────────────────────
+  const RANK_WORDS = { '1e': 'eerste', '2e': 'tweede', '3e': 'derde', '4e': 'vierde' };
+
+  function _numToWords(n) {
+    if (!n || n === 0) return 'nul';
+    n = Math.round(n);
+    const ones = ['','een','twee','drie','vier','vijf','zes','zeven','acht','negen','tien','elf','twaalf','dertien','veertien','vijftien','zestien','zeventien','achttien','negentien'];
+    const tens = ['','','twintig','dertig','veertig','vijftig','zestig','zeventig','tachtig','negentig'];
+    function d2(n) { if(n<20) return ones[n]; const t=Math.floor(n/10),u=n%10; if(!u) return tens[t]; const w=ones[u]; return w+(w.endsWith('e')?'ën':'en')+tens[t]; }
+    function d3(n) { if(n<100) return d2(n); const h=Math.floor(n/100),r=n%100; return (h===1?'':ones[h])+'honderd'+(r>0?d2(r):''); }
+    function b1m(n) { if(n<1000) return d3(n); const t=Math.floor(n/1000),r=n%1000; return (t===1?'':d3(t))+'duizend'+(r>0?' '+d3(r):''); }
+    if(n>=1000000){const m=Math.floor(n/1000000),r=n%1000000; return (m===1?'een miljoen':b1m(m)+' miljoen')+(r>0?' '+b1m(r):'');}
+    return b1m(n);
+  }
+
+  function _fmtE(n) {
+    if (!n) return '—';
+    return '€ ' + new Intl.NumberFormat('nl-NL',{minimumFractionDigits:0,maximumFractionDigits:0}).format(Math.round(n)) + ',-';
+  }
+
+  function updateZekerhedenPreview() {
+    const el = document.getElementById('ts-zekerheden-preview');
+    if (!el) return;
+
+    const totalLoan = [...document.querySelectorAll('#ts-loanpart-rows .dyn-row')].reduce((s, r) => {
+      return s + (parseFloat(r.querySelector('.ts-lp-amount')?.value) || 0);
+    }, 0);
+
+    const objRows = document.querySelectorAll('#ts-obj-rows .dyn-row');
+    if (!objRows.length || !totalLoan) { el.value = ''; return; }
+
+    const lines = [];
+    [...objRows].forEach((row, idx) => {
+      const rank = row.querySelector('.ts-obj-rank')?.value || '1e';
+      const rankWord = RANK_WORDS[rank] || 'eerste';
+      const addr = row.querySelector('.ts-obj-address')?.value.trim() || `object ${idx+1}`;
+
+      let txt = `${idx+1}.) Een ${rankWord} recht van hypotheek ter hoogte van ${_numToWords(totalLoan)} euro (${_fmtE(totalLoan)}) wordt gevestigd op object ${idx+1} (${addr}) ten gunste van de Geldverstrekker`;
+
+      if (rank === '1e') {
+        txt += ' tot zekerheid van de verstrekte lening.';
+      } else {
+        txt += '.';
+        const priorRows = row.querySelectorAll('.ts-prior-row');
+        if (priorRows.length) {
+          const parts = [...priorRows].map((pr, pi) => {
+            const priorRank = RANK_WORDS[`${pi+1}e`] || `${pi+1}e`;
+            const name = pr.querySelector('.ts-prior-name')?.value.trim() || '...';
+            const inschrijving = parseFloat(pr.querySelector('.ts-prior-inschrijving')?.value) || 0;
+            const owed = parseFloat(pr.querySelector('.ts-prior-currentOwed')?.value) || 0;
+            return `een ${priorRank} recht van hypotheek ten gunste van de ${name} met een inschrijving van ${_numToWords(inschrijving)} euro (${_fmtE(inschrijving)}) en een actuele hoofdsom van ${_numToWords(owed)} euro (${_fmtE(owed)}), welke zonder uitdrukkelijke toestemming niet mag worden verhoogd`;
+          });
+          txt += ` Op dit object rust${priorRows.length > 1 ? 'en' : ''} reeds ${parts.join('; en ')}.`;
+        }
+      }
+      lines.push(txt);
+    });
+
+    el.value = lines.join('\n\n');
   }
 
   // ── Helpers ──────────────────────────────────────────────
@@ -977,7 +1080,7 @@ const TermsheetForm = (() => {
     addVooraf, removeVooraf, toggleVooraf,
     toggleBorrowerType, toggleHolding, toggleHypotheekRank,
     openAdvisorManager, openFaciliteitManager,
-    onDateChange,
+    onDateChange, onDeadlineChange,
     _dragStart, _dragOver, _dragEnd, _dragDrop,
     _mgrRemove, _mgrAdd,
     berekenTermijn,

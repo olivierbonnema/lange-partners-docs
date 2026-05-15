@@ -479,7 +479,7 @@ const TermsheetGenerator = (() => {
 
     loanParts.forEach(lp => {
       const label = (lp.typeLabel || '').trim();
-      if (label === 'Termijnlening') return;
+      if (label === 'Lening bij aanvang') return;
       if (label === 'Rentedepot') {
         const depotTxt = `Van de lening zal een bedrag van ${fmtEuro(lp.amount)} ${fmtZegge(lp.amount)} worden aangehouden op een rentedepot voor de betaling van de rente en kosten van de financiering voor de duur van ${looptijdMaanden || '—'} maanden. Er wordt over het rentedepot geen rente vergoed.`;
         leningRows.push(condRow('Rentedepot', [par([tx(depotTxt, { size: SZ_SMALL })], { before: 50, after: 50 })]));
