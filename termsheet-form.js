@@ -94,7 +94,7 @@ const TermsheetForm = (() => {
     const d = existingData || {};
     const s = settings || {};
     const borrowers = d.borrowers || [{ type: 'privepersoon', name: '', address: '', postalCode: '', city: '' }];
-    const objects   = d.objects || [{ description: '' }];
+    const objects   = d.objects || [{ description: '', address: '', hypotheekRank: '1e', priorLienholders: [] }];
     const loanParts = d.loanParts || [{ amount: '', typeLabel: 'Termijnlening' }];
     const vooraf    = d.voorafgaandeCondities || DEFAULT_VOORAF_CONDITIES.map(c => ({...c}));
     const entree    = d.entreekosten || { afsluit: '', opstart: '', annulering: '' };
@@ -164,7 +164,7 @@ const TermsheetForm = (() => {
 
       <!-- 3. Onderpanden -->
       ${section('Onderpanden (zekerheden)', `
-        <div class="info-row">ℹ️ Voer de volledige kadastrale omschrijving in. Elk onderpand krijgt een nummer in de termsheet.</div>
+        <div class="info-row">ℹ️ Voer de volledige kadastrale omschrijving in. Kies het recht van hypotheek en vul het korte adres in voor de zekerheden-sectie.</div>
         <div class="dynamic-rows" id="ts-obj-rows">
           ${objects.map((o, i) => objectRow(o, i)).join('')}
         </div>
@@ -320,8 +320,7 @@ const TermsheetForm = (() => {
           <textarea id="ts-betalingswijze" rows="3" oninput="this.dataset.userEdited='1'">${escHtml(d.betalingswijze !== undefined ? d.betalingswijze : defaultBetalingswijze)}</textarea>
         </div>
         <div class="form-group">
-          <label>Zekerheden (omschrijving)</label>
-          <textarea id="ts-zekerheden" rows="4" placeholder="Omschrijf de hypothecaire zekerheden...">${escHtml(d.zekerheden || '')}</textarea>
+          <label style="color:#888;font-style:italic">Zekerheden worden automatisch gegenereerd op basis van de onderpanden hierboven.</label>
         </div>
         <div class="form-group">
           <label>Verzekering</label>
@@ -446,10 +445,55 @@ const TermsheetForm = (() => {
     </div>`;
   }
 
+  const HYPOTHEEK_RANKS = ['1e', '2e', '3e', '4e'];
+  const RANK_LABELS = { '1e': 'eerste', '2e': 'tweede', '3e': 'derde', '4e': 'vierde' };
+
   function objectRow(o, i) {
-    return `<div class="dyn-row" id="ts-obj-${i}">
+    const rank = o.hypotheekRank || '1e';
+    const priors = o.priorLienholders || [];
+    const numPriors = HYPOTHEEK_RANKS.indexOf(rank);
+    return `<div class="dyn-row" id="ts-obj-${i}" style="flex-direction:column;align-items:stretch;gap:.5rem;padding:.75rem">
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <span style="font-weight:700;color:#2E2060;min-width:24px">Object ${i+1}</span>
+        <button class="btn-rm" onclick="TermsheetForm.removeObject(${i})" title="Verwijderen" style="margin-left:auto">×</button>
+      </div>
       <textarea placeholder="Volledige kadastrale omschrijving van het onderpand..." style="flex:1;min-height:70px" class="ts-obj-desc">${escHtml(o.description||'')}</textarea>
-      <button class="btn-rm" onclick="TermsheetForm.removeObject(${i})" title="Verwijderen">×</button>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <div class="form-group" style="flex:1;min-width:200px">
+          <label>Kort adres (voor zekerheden)</label>
+          <input type="text" placeholder="Bijv. Meije 45 te 2411 PJ Bodegraven" class="ts-obj-address" value="${escHtml(o.address||'')}">
+        </div>
+        <div class="form-group" style="flex:0 0 180px">
+          <label>Recht van hypotheek</label>
+          <select class="ts-obj-rank" onchange="TermsheetForm.toggleHypotheekRank(${i})">
+            ${HYPOTHEEK_RANKS.map(r => `<option value="${r}"${rank === r ? ' selected' : ''}>${r} recht van hypotheek</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="ts-obj-priors" style="${numPriors < 1 ? 'display:none' : ''}">
+        ${Array.from({length: Math.max(numPriors, 0)}, (_, pi) => priorLienholderRow(priors[pi] || {}, i, pi)).join('')}
+      </div>
+    </div>`;
+  }
+
+  function priorLienholderRow(pl, objIdx, priorIdx) {
+    const rankLabel = RANK_LABELS[HYPOTHEEK_RANKS[priorIdx]] || `${priorIdx + 1}e`;
+    return `<div class="ts-prior-row" style="border:1px solid #e0e0e0;border-radius:6px;padding:.5rem;margin-top:.4rem;background:#fafafa">
+      <div style="font-size:11px;font-weight:600;color:#888;margin-bottom:.3rem;text-transform:uppercase">Bestaand ${rankLabel} recht van hypotheek</div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <div class="form-group" style="flex:1;min-width:160px">
+          <label>Naam hypotheekhouder</label>
+          <input type="text" placeholder="Bijv. ING Bank N.V." class="ts-prior-name" value="${escHtml(pl.name||'')}">
+        </div>
+        <div class="form-group" style="flex:0 0 160px">
+          <label>Inschrijving (€)</label>
+          <input type="number" placeholder="900000" class="ts-prior-inschrijving" value="${pl.inschrijving||''}" min="0" step="1">
+        </div>
+        <div class="form-group" style="flex:0 0 160px">
+          <label>Actuele hoofdsom (€)</label>
+          <input type="number" placeholder="660239" class="ts-prior-currentOwed" value="${pl.currentOwed||''}" min="0" step="1">
+        </div>
+      </div>
     </div>`;
   }
 
@@ -521,10 +565,38 @@ const TermsheetForm = (() => {
     if (el) el.remove();
   }
 
+  function toggleHypotheekRank(objIdx) {
+    const row = document.getElementById('ts-obj-' + objIdx);
+    if (!row) return;
+    const rank = row.querySelector('.ts-obj-rank')?.value || '1e';
+    const numPriors = HYPOTHEEK_RANKS.indexOf(rank);
+    const priorsContainer = row.querySelector('.ts-obj-priors');
+    if (!priorsContainer) return;
+
+    if (numPriors < 1) {
+      priorsContainer.style.display = 'none';
+      while (priorsContainer.firstChild) priorsContainer.removeChild(priorsContainer.firstChild);
+      return;
+    }
+
+    priorsContainer.style.display = '';
+    const existingRows = priorsContainer.querySelectorAll('.ts-prior-row');
+    const existingData = [...existingRows].map(r => ({
+      name:          r.querySelector('.ts-prior-name')?.value || '',
+      inschrijving:  r.querySelector('.ts-prior-inschrijving')?.value || '',
+      currentOwed:   r.querySelector('.ts-prior-currentOwed')?.value || '',
+    }));
+
+    while (priorsContainer.firstChild) priorsContainer.removeChild(priorsContainer.firstChild);
+    for (let pi = 0; pi < numPriors; pi++) {
+      priorsContainer.insertAdjacentHTML('beforeend', priorLienholderRow(existingData[pi] || {}, objIdx, pi));
+    }
+  }
+
   function addObject() {
     const rows = document.getElementById('ts-obj-rows');
     const i = nextIdx('#ts-obj-rows', 'ts-obj-');
-    rows.insertAdjacentHTML('beforeend', objectRow({ description:'' }, i));
+    rows.insertAdjacentHTML('beforeend', objectRow({ description:'', address:'', hypotheekRank:'1e', priorLienholders:[] }, i));
   }
   function removeObject(i) {
     const el = document.getElementById('ts-obj-' + i);
@@ -737,9 +809,22 @@ const TermsheetForm = (() => {
     }).filter(b => b.name);
 
     // Objects
-    const objects = [...document.querySelectorAll('.ts-obj-desc')].map(t => ({
-      description: t.value.trim()
-    })).filter(o => o.description);
+    const objRows = document.querySelectorAll('#ts-obj-rows .dyn-row');
+    const objects = [...objRows].map(row => {
+      const rank = row.querySelector('.ts-obj-rank')?.value || '1e';
+      const priorRows = row.querySelectorAll('.ts-prior-row');
+      const priorLienholders = [...priorRows].map(pr => ({
+        name:         pr.querySelector('.ts-prior-name')?.value.trim() || '',
+        inschrijving: parseFloat(pr.querySelector('.ts-prior-inschrijving')?.value) || 0,
+        currentOwed:  parseFloat(pr.querySelector('.ts-prior-currentOwed')?.value) || 0,
+      })).filter(pl => pl.name);
+      return {
+        description:      row.querySelector('.ts-obj-desc')?.value.trim() || '',
+        address:          row.querySelector('.ts-obj-address')?.value.trim() || '',
+        hypotheekRank:    rank,
+        priorLienholders,
+      };
+    }).filter(o => o.description);
 
     // Loan parts
     const loanParts = [...document.querySelectorAll('#ts-loanpart-rows .dyn-row')].map(row => ({
@@ -789,7 +874,7 @@ const TermsheetForm = (() => {
       entreekosten,
       extraAflossen:       gv('ts-extra-aflossen'),
       betalingswijze:      gv('ts-betalingswijze'),
-      zekerheden:          gv('ts-zekerheden'),
+      zekerheden:          '',
       verzekering:         gv('ts-verzekering'),
       condities:           gv('ts-condities'),
       toepasselijkRecht:   gv('ts-recht'),
@@ -890,7 +975,7 @@ const TermsheetForm = (() => {
     addObject, removeObject,
     addLoanPart, removeLoanPart,
     addVooraf, removeVooraf, toggleVooraf,
-    toggleBorrowerType, toggleHolding,
+    toggleBorrowerType, toggleHolding, toggleHypotheekRank,
     openAdvisorManager, openFaciliteitManager,
     onDateChange,
     _dragStart, _dragOver, _dragEnd, _dragDrop,

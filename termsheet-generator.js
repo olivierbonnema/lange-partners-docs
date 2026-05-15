@@ -158,6 +158,63 @@ const TermsheetGenerator = (() => {
     return `€ ${formatted}`;
   }
 
+  function numberToWords(n) {
+    if (!n || n === 0) return 'nul';
+    n = Math.round(n);
+
+    const ones = ['', 'een', 'twee', 'drie', 'vier', 'vijf', 'zes', 'zeven', 'acht', 'negen',
+                   'tien', 'elf', 'twaalf', 'dertien', 'veertien', 'vijftien', 'zestien',
+                   'zeventien', 'achttien', 'negentien'];
+    const tens = ['', '', 'twintig', 'dertig', 'veertig', 'vijftig', 'zestig', 'zeventig', 'tachtig', 'negentig'];
+
+    function twoDigits(n) {
+      if (n < 20) return ones[n];
+      const t = Math.floor(n / 10);
+      const u = n % 10;
+      if (u === 0) return tens[t];
+      const unitWord = ones[u];
+      const connector = unitWord.endsWith('e') ? 'ën' : 'en';
+      return unitWord + connector + tens[t];
+    }
+
+    function threeDigits(n) {
+      if (n < 100) return twoDigits(n);
+      const h = Math.floor(n / 100);
+      const rest = n % 100;
+      const prefix = h === 1 ? '' : ones[h];
+      return prefix + 'honderd' + (rest > 0 ? twoDigits(rest) : '');
+    }
+
+    function below1M(n) {
+      if (n < 1000) return threeDigits(n);
+      const thousands = Math.floor(n / 1000);
+      const rest = n % 1000;
+      const prefix = thousands === 1 ? '' : threeDigits(thousands);
+      return prefix + 'duizend' + (rest > 0 ? ' ' + threeDigits(rest) : '');
+    }
+
+    if (n >= 1000000) {
+      const millions = Math.floor(n / 1000000);
+      const rest = n % 1000000;
+      const mWord = millions === 1 ? 'een miljoen' : below1M(millions) + ' miljoen';
+      return mWord + (rest > 0 ? ' ' + below1M(rest) : '');
+    }
+    return below1M(n);
+  }
+
+  function fmtZegge(n) {
+    return `(zegge: ${numberToWords(n)} euro)`;
+  }
+
+  function parseLooptijdMaanden(looptijdStr) {
+    if (!looptijdStr) return 0;
+    const maanden = looptijdStr.match(/(\d+)\s*(mnd|maand|maanden)/i);
+    if (maanden) return parseInt(maanden[1]);
+    const jaren = looptijdStr.match(/(\d+)\s*(jr|jaar|jaren)/i);
+    if (jaren) return parseInt(jaren[1]) * 12;
+    return parseInt(looptijdStr) || 0;
+  }
+
   function fmtNlDate(iso) {
     if (!iso) return '—';
     try {
@@ -382,7 +439,7 @@ const TermsheetGenerator = (() => {
     // ── Intro paragraph ─────────────────────────────────────
     const objectDescriptions = objects.map((o, i) => {
       const desc = o.description || '';
-      return `- ${desc}${desc && !desc.endsWith('.') ? '.' : ''} Hierna te noemen 'object ${i+1}'.`;
+      return `${i+1}.) ${desc}${desc && !desc.endsWith('.') ? '.' : ''} Hierna te noemen 'object ${i+1}'.`;
     });
 
     letterChildren.push(par([
@@ -390,7 +447,7 @@ const TermsheetGenerator = (() => {
       tx('Lange & Partners Financieel Advies', { bold: true, size: SZ_SMALL }),
       tx(', hierna te noemen "de Bemiddelaar", u een aanbieding wil doen voor een financiering van ', { size: SZ_SMALL }),
       tx(loanTotalTxt, { bold: true, size: SZ_SMALL }),
-      tx(` met als doel ${data.doelFinanciering || 'een herfinanciering'}, waarbij het volgende object als zekerheid dient:`, { size: SZ_SMALL }),
+      tx(` met als doel ${data.doelFinanciering || 'een herfinanciering'}, waarbij ${objects.length > 1 ? 'de volgende objecten als zekerheid dienen' : 'het volgende object als zekerheid dient'}:`, { size: SZ_SMALL }),
     ], { before: 0, after: 80 }));
 
     objectDescriptions.forEach(desc => {
@@ -411,12 +468,25 @@ const TermsheetGenerator = (() => {
 
     const kredietnemersTxt = borrowers.map(b => b.name).filter(Boolean).join(', ') || '—';
 
-    // Lening rows: multiple parts show amount + type label; single part shows amount only
-    const leningRows = loanParts.length > 1
-      ? loanParts.map((lp, i) =>
-          condRow(`Lening deel ${i+1}`, [tx(`${fmtEuro(lp.amount)}  ${lp.typeLabel || ''}`.trim(), { size: SZ_SMALL })]))
-      : [condRow('Lening', [tx(loanParts[0] ? fmtEuro(loanParts[0].amount) : loanTotalTxt, { bold: true, size: SZ_SMALL })],
-                 { boldLabel: true })];
+    // Lening rows: first row always "Lening bij aanvang" with total + words,
+    // then additional rows for rentedepot/bouwdepot with detailed descriptions
+    const looptijdMaanden = parseLooptijdMaanden(data.looptijd);
+    const leningRows = [];
+
+    leningRows.push(condRow('Lening bij aanvang', [
+      tx(`${fmtEuro(totalLoan)} ${fmtZegge(totalLoan)}`, { size: SZ_SMALL }),
+    ]));
+
+    loanParts.forEach(lp => {
+      const label = (lp.typeLabel || '').trim();
+      if (label === 'Termijnlening') return;
+      if (label === 'Rentedepot') {
+        const depotTxt = `Van de lening zal een bedrag van ${fmtEuro(lp.amount)} ${fmtZegge(lp.amount)} worden aangehouden op een rentedepot voor de betaling van de rente en kosten van de financiering voor de duur van ${looptijdMaanden || '—'} maanden. Er wordt over het rentedepot geen rente vergoed.`;
+        leningRows.push(condRow('Rentedepot', [par([tx(depotTxt, { size: SZ_SMALL })], { before: 50, after: 50 })]));
+      } else {
+        leningRows.push(condRow(label, [tx(`${fmtEuro(lp.amount)} ${fmtZegge(lp.amount)}`, { size: SZ_SMALL })]));
+      }
+    });
 
     // Termijnbedrag: 3 lines
     const termijnNum   = Number(data.termijnbedrag) || 0;
@@ -425,8 +495,8 @@ const TermsheetGenerator = (() => {
     const termijnPars = termijnNum > 0
       ? [
           par([tx(`${fmtEuro2dec(termijnNum)} exclusief administratiekosten`, { size: SZ_SMALL })], { before: 30, after: 10 }),
-          par([tx(`Administratiekosten: ${fmtEuro(adminKosten)} per maand`, { size: SZ_SMALL })], { before: 10, after: 10 }),
-          par([tx(`Totaal per maand: ${fmtEuro(totalPerMaand)}`, { size: SZ_SMALL })], { before: 10, after: 30 }),
+          par([tx(`Administratiekosten: ${fmtEuro2dec(adminKosten)} per maand`, { size: SZ_SMALL })], { before: 10, after: 10 }),
+          par([tx(`Totaal per maand: ${fmtEuro2dec(totalPerMaand)}`, { size: SZ_SMALL })], { before: 10, after: 30 }),
         ]
       : [par([tx('—', { size: SZ_SMALL })], { before: 50, after: 50 })];
 
@@ -444,7 +514,7 @@ const TermsheetGenerator = (() => {
 
     const table1Rows = [
       condRow('Kredietgever',    [tx(data.kredietgever || companyName, { size: SZ_SMALL })]),
-      condRow('Kredietnemers',   [tx(kredietnemersTxt, { size: SZ_SMALL })]),
+      condRow(borrowers.length > 1 ? 'Kredietnemers' : 'Kredietnemer', [tx(kredietnemersTxt, { size: SZ_SMALL })]),
       condRow('Geldverstrekker', [tx(data.geldverstrekker || '—', { size: SZ_SMALL })]),
       condRow('Type faciliteit', [tx(data.typeFaciliteit || '—', { size: SZ_SMALL })]),
       condRow('Valuta',          [tx(data.valuta || 'Euro (€)', { size: SZ_SMALL })]),
@@ -468,16 +538,34 @@ const TermsheetGenerator = (() => {
     // ══ SECOND CONDITIONS TABLE ═══════════════════════════════
     letterChildren.push(sectionHead('Voor de bovenvermelde lening zijn de volgende bepalingen van kracht:'));
 
-    // Zekerheden
+    // Zekerheden — auto-generated from objects with hypotheek rank data
+    const rankWords = { '1e': 'eerste', '2e': 'tweede', '3e': 'derde', '4e': 'vierde' };
     const zekerhedenPars = [];
-    if (data.zekerheden) {
-      zekerhedenPars.push(par([tx(data.zekerheden, { size: SZ_SMALL })], { before: 50, after: 30 }));
-    }
-    objects.forEach((o) => {
-      if (o.description) {
-        zekerhedenPars.push(par([
-          tx(o.description, { size: SZ_SMALL }),
-        ], { before: 20, after: 20 }));
+    objects.forEach((o, idx) => {
+      const rank = o.hypotheekRank || '1e';
+      const rankWord = rankWords[rank] || 'eerste';
+      const addr = o.address || `object ${idx + 1}`;
+      const loanAmountWords = numberToWords(totalLoan);
+
+      let txt = `${idx + 1}.) Een ${rankWord} recht van hypotheek ter hoogte van ${loanAmountWords} euro (${fmtEuro(totalLoan)}) wordt gevestigd op object ${idx + 1} (${addr}) ten gunste van de Geldverstrekker`;
+
+      if (rank === '1e') {
+        txt += ' tot zekerheid van de verstrekte lening.';
+      } else {
+        txt += '.';
+      }
+      zekerhedenPars.push(par([tx(txt, { size: SZ_SMALL })], { before: 30, after: 20 }));
+
+      if (rank !== '1e' && o.priorLienholders && o.priorLienholders.length) {
+        const priors = o.priorLienholders;
+        const priorTexts = priors.map((pl, pi) => {
+          const priorRankWord = rankWords[`${pi + 1}e`] || `${pi + 1}e`;
+          const inschrijvingWords = numberToWords(pl.inschrijving);
+          const owedWords = numberToWords(pl.currentOwed);
+          return `een ${priorRankWord} recht van hypotheek ten gunste van de ${pl.name} met een inschrijving van ${inschrijvingWords} euro (${fmtEuro(pl.inschrijving)}) en een actuele hoofdsom van ${owedWords} euro (${fmtEuro(pl.currentOwed)}), welke zonder uitdrukkelijke toestemming niet mag worden verhoogd`;
+        });
+        const priorSentence = `Op dit object rust${priors.length > 1 ? 'en' : ''} reeds ${priorTexts.join('; en ')}.`;
+        zekerhedenPars.push(par([tx(priorSentence, { size: SZ_SMALL })], { before: 10, after: 30 }));
       }
     });
     if (!zekerhedenPars.length) zekerhedenPars.push(par([tx('—', { size: SZ_SMALL })], { before: 50, after: 50 }));
@@ -499,7 +587,7 @@ const TermsheetGenerator = (() => {
       condRow('Beschikbaarheid',       [par([tx(data.beschikbaarheid || '—', { size: SZ_SMALL })], { before: 50, after: 50 })]),
       condRow('Overdracht',            [par([tx(data.overdracht || '—', { size: SZ_SMALL })], { before: 50, after: 50 })]),
       condRow('Notaris',               [par([tx(data.notaris || '—', { size: SZ_SMALL })], { before: 50, after: 50 })]),
-      condRow('Geldigheidsduur',       [par([tx(validityStr, { size: SZ_SMALL })], { before: 50, after: 50 })]),
+      condRow('Geldigheidsduur (na ondertekening)', [par([tx(`Tot en met uiterlijk ${validityStr}`, { size: SZ_SMALL })], { before: 50, after: 50 })]),
     ];
 
     letterChildren.push(condTable(table2Rows));
